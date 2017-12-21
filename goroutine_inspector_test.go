@@ -20,13 +20,13 @@ func TestGoroutineLeaks(t *testing.T) {
 	go routine(make(chan bool))
 	go routine(make(chan bool))
 
-	leaks, err := tr.GoroutineLeaks()
+	count, leaks, err := tr.GoroutineLeaks()
 	if err != nil {
 		t.Error(err)
 	}
 
-	if len(leaks) != 3 {
-		t.Errorf("goroutine_leaks = %d, want = %d", len(leaks), 3)
+	if count != 3 {
+		t.Errorf("goroutine_leaks = %d, want = %d", count, 3)
 	}
 	fmt.Println(leaks)
 }
