@@ -2,6 +2,9 @@ package goroutine_inspector
 
 import (
 	"bytes"
+	"fmt"
+	"io"
+	"os"
 	"regexp"
 	"runtime/trace"
 	"strconv"
@@ -35,7 +38,7 @@ func Start() (*Trace, error) {
 }
 
 func shouldAddEvent(e *Event) bool {
-	pattern := "github.com/joshi4/goroutine_inspector.Start|runtime/trace.Start"
+	pattern := "github.com/joshi4/goroutine_inspector.Start|runtime/trace.Start|runtime.gcBgMark"
 	ok, _ := regexp.MatchString(pattern, peekFn(e.Stk))
 	return !ok
 }
@@ -58,29 +61,48 @@ func (t *Trace) Stop() {
 // GoroutineLeaks returns all go routines that were created
 // but did not terminate during the trace period.
 // GoroutineLeaks calls Stop()
-func (t *Trace) GoroutineLeaks() ([]string, error) {
+func (t *Trace) GoroutineLeaks() (int, []string, error) {
 	t.Stop()
 
-	leakedGoRoutines := make([]string, 0)
+	return goroutineLeaks(t.buf)
+}
 
-	events, err := Parse(t.buf, "")
+func GoroutineLeaksFromFile(filename string) (int, []string, error) {
+	f, err := os.Open(filename)
 	if err != nil {
-		return nil, err
+		return -1, nil, err
+	}
+	defer f.Close()
+	return goroutineLeaks(f)
+}
+
+func goroutineLeaks(r io.Reader) (int, []string, error) {
+	events, err := Parse(r, "")
+	if err != nil {
+		return -1, nil, err
 	}
 
+	leakedGoRoutines := make(map[string]int)
 	for _, e := range events {
 		if e.Type == EvGoCreate && goroutineLeaked(e) {
 			if shouldAddEvent(e) {
-				leakedGoRoutines = append(leakedGoRoutines, printStack(e.Stk))
+				leakedGoRoutines[printStack(e.Stk)] += 1
 			}
 		}
 	}
-	return leakedGoRoutines, nil
+
+	info := make([]string, 0, len(leakedGoRoutines))
+	count := 0
+	for k, v := range leakedGoRoutines {
+		count += v
+		info = append(info, fmt.Sprintf("count:%d\n stack:%s\n", v, k))
+	}
+	return count, info, nil
 }
 
 func goroutineLeaked(e *Event) bool {
 	if e.Link == nil {
-		return e.Type != EvGoEnd
+		return (e.Type != EvGoEnd)
 	}
 	return goroutineLeaked(e.Link)
 }
