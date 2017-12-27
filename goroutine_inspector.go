@@ -38,7 +38,7 @@ func Start() (*Trace, error) {
 }
 
 func shouldAddEvent(e *Event) bool {
-	pattern := "github.com/joshi4/goroutine_inspector.Start|runtime/trace.Start|runtime.gcBgMark"
+	pattern := "github.com/joshi4/goroutine_inspector.Start|runtime/trace.Start|runtime.gcBgMark|runtime.addtimerLocked"
 	ok, _ := regexp.MatchString(pattern, peekFn(e.Stk))
 	return !ok
 }
@@ -63,7 +63,6 @@ func (t *Trace) Stop() {
 // GoroutineLeaks calls Stop()
 func (t *Trace) GoroutineLeaks() (int, []string, error) {
 	t.Stop()
-
 	return goroutineLeaks(t.buf)
 }
 
@@ -74,6 +73,18 @@ func GoroutineLeaksFromFile(filename string) (int, []string, error) {
 	}
 	defer f.Close()
 	return goroutineLeaks(f)
+}
+
+func (t *Trace) AssertGoroutineLeakCount(want int) error {
+	count, leaks, err := t.GoroutineLeaks()
+	if err != nil {
+		return err
+	}
+
+	if count != want {
+		return fmt.Errorf("goroutine_leak count mismatch: got = %d, expected %d, stack = %s", count, want, leaks)
+	}
+	return nil
 }
 
 func goroutineLeaks(r io.Reader) (int, []string, error) {
