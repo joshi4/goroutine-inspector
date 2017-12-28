@@ -30,6 +30,11 @@ func TestGoroutineLeaks(t *testing.T) {
 	if err := tr.AssertGoroutineLeakCount(3); err != nil {
 		t.Error(err)
 	}
+
+	// multiple queries on same trace
+	if err := tr.AssertGoroutineLeakCount(2); err == nil {
+		t.Error("unexpected nil error: expected 3 goroutines to have leaked")
+	}
 }
 
 func routine(ch chan bool) {
