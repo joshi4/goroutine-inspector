@@ -14,12 +14,13 @@ import (
 )
 
 type Trace struct {
-	// start synOnce
-	buf *bytes.Buffer
+	buf  *bytes.Buffer
+	done sync.Once
 
-	done   sync.Once
-	donech chan struct{}
-	err    error
+	process          sync.Once
+	leakedGoRoutines int
+	stackTraces      []string
+	err              error
 }
 
 // Start starts a trace for inspection.
@@ -27,8 +28,7 @@ type Trace struct {
 // NOTE: Start must only be called once per executable
 func Start() (*Trace, error) {
 	t := &Trace{
-		buf:    new(bytes.Buffer),
-		donech: make(chan struct{}),
+		buf: new(bytes.Buffer),
 	}
 
 	if err := trace.Start(t.buf); err != nil {
@@ -54,7 +54,6 @@ func peekFn(s []*Frame) string {
 func (t *Trace) Stop() {
 	t.done.Do(func() {
 		trace.Stop()
-		close(t.donech)
 	})
 }
 
@@ -63,7 +62,14 @@ func (t *Trace) Stop() {
 // GoroutineLeaks calls Stop()
 func (t *Trace) GoroutineLeaks() (int, []string, error) {
 	t.Stop()
-	return goroutineLeaks(t.buf)
+
+	t.process.Do(func() {
+		count, info, err := goroutineLeaks(t.buf)
+		t.leakedGoRoutines = count
+		t.stackTraces = info
+		t.err = err
+	})
+	return t.leakedGoRoutines, t.stackTraces, t.err
 }
 
 func GoroutineLeaksFromFile(filename string) (int, []string, error) {
