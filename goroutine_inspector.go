@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"sync"
 
-	. "github.com/joshi4/goroutine_inspector/internal/trace"
+	. "github.com/joshi4/goroutine-inspector/internal/trace"
 )
 
 type Trace struct {
@@ -38,7 +38,7 @@ func Start() (*Trace, error) {
 }
 
 func shouldAddEvent(e *Event) bool {
-	pattern := "github.com/joshi4/goroutine_inspector.Start|runtime/trace.Start|runtime.gcBgMark|runtime.addtimerLocked"
+	pattern := "github.com/joshi4/goroutine-inspector.Start|runtime/trace.Start|runtime.gcBgMark|runtime.addtimerLocked"
 	ok, _ := regexp.MatchString(pattern, peekFn(e.Stk))
 	return !ok
 }
