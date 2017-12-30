@@ -24,7 +24,7 @@ func TestGoroutineLeaks(t *testing.T) {
 	go routine(make(chan bool))
 	go routine(make(chan bool))
 
-	if err := tr.AssertGoroutineLeakCount(0, "routine"); err != nil {
+	if err := tr.GoroutineLeaks("routine"); err != nil {
 		t.Error(err)
 	}
 }
@@ -36,7 +36,7 @@ func routine(ch chan bool) {
 func TestSleep(t *testing.T) {
 	tr := start(t)
 	time.Sleep(250 * time.Millisecond)
-	if err := tr.AssertGoroutineLeakCount(0); err != nil {
+	if err := tr.GoroutineLeaks(); err != nil {
 		t.Error(err)
 	}
 }
