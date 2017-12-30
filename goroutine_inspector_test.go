@@ -27,13 +27,13 @@ func TestGoroutineLeaks(t *testing.T) {
 	go routine(make(chan bool))
 	go routine(make(chan bool))
 
-	if err := tr.AssertGoroutineLeakCount(3); err != nil {
+	if err := tr.AssertGoroutineLeakCount(0, "routine"); err != nil {
 		t.Error(err)
 	}
 
-	// multiple queries on same trace
-	if err := tr.AssertGoroutineLeakCount(2); err == nil {
-		t.Error("unexpected nil error: expected 3 goroutines to have leaked")
+	// execute second query on same trace
+	if err := tr.AssertGoroutineLeakCount(0); err == nil {
+		t.Error("unexpected nil error:, function routine leaks and should be detected")
 	}
 }
 
@@ -50,7 +50,7 @@ func TestResponseBodyLeak(t *testing.T) {
 
 	tr := start(t)
 	defer func() {
-		if err := tr.AssertGoroutineLeakCount(3); err != nil {
+		if err := tr.AssertGoroutineLeakCount(1, "readLoop", "writeLoop", "net/http/httptest.(*Server).goServe.func1"); err != nil {
 			t.Error(err)
 		}
 	}()
