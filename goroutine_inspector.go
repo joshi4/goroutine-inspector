@@ -20,10 +20,7 @@ type Trace struct {
 }
 
 var defaultWhitelist = []string{
-	"runtime.main",
 	"runtime/trace.Start.func1",
-	"runtime.gcBgMarkWorker",
-	"runtime.timerproc",
 	"testing.tRunner",
 }
 
@@ -36,6 +33,7 @@ func Start() (*Trace, error) {
 		whitelist: defaultWhitelist,
 	}
 
+	t.buf.Reset()
 	if err := trace.Start(t.buf); err != nil {
 		return nil, err
 	}
@@ -109,7 +107,7 @@ func goroutineLeaks(r io.Reader, blacklist []string) (int, []string, error) {
 
 func isWhitelisted(name string, whitelist []string) bool {
 	for _, wl := range whitelist {
-		if strings.HasSuffix(name, wl) {
+		if strings.HasSuffix(name, wl) || strings.HasPrefix(name, "runtime.") {
 			return true
 		}
 	}
