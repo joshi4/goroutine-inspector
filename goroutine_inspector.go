@@ -50,59 +50,44 @@ func (t *Trace) Stop() {
 // GoroutineLeaks returns all go routines that were created
 // but did not terminate during the trace period.
 // GoroutineLeaks calls Stop()
-func (t *Trace) GoroutineLeaks(whitelist []string) (int, []string, error) {
+func (t *Trace) GoroutineLeaks(whitelist ...string) error {
 	t.Stop()
 	whitelist = append(t.whitelist, whitelist...)
 	return goroutineLeaks(t.buf, whitelist)
 }
 
-func GoroutineLeaksFromFile(filename string) (int, []string, error) {
+func GoroutineLeaksFromFile(filename string) error {
 	f, err := os.Open(filename)
 	if err != nil {
-		return -1, nil, err
+		return err
 	}
 	defer f.Close()
 	return goroutineLeaks(f, defaultWhitelist)
 }
 
-func (t *Trace) AssertGoroutineLeakCount(want int, whitelist ...string) error {
-	count, leaks, err := t.GoroutineLeaks(whitelist)
-	if err != nil {
-		return err
-	}
-
-	if count != want {
-		return fmt.Errorf("goroutine_leak count mismatch: got = %d, expected %d, stack = %s", count, want, leaks)
-	}
-	return nil
-}
-
-func goroutineLeaks(r io.Reader, blacklist []string) (int, []string, error) {
+func goroutineLeaks(r io.Reader, whitelist []string) error {
 	events, err := Parse(r, "")
 	if err != nil {
-		return -1, nil, err
+		return err
 	}
 
 	gdesc := GoroutineStats(events)
 	_ = gdesc
 
-	leakedGoRoutines := make(map[string]int)
+	stack := ""
 	for _, e := range events {
 		if fe, ok := hasGoroutineLeaked(e); ok {
 			fn := gdesc[fe.G]
-			if fn != nil && fn.Name != "" && !isWhitelisted(fn.Name, blacklist) {
-				leakedGoRoutines[printStack(e.Stk, fn.Name)] += 1
+			if fn != nil && fn.Name != "" && !isWhitelisted(fn.Name, whitelist) {
+				stack += printStack(e.Stk, fn.Name)
 			}
 		}
 	}
 
-	info := make([]string, 0, len(leakedGoRoutines))
-	count := 0
-	for k, v := range leakedGoRoutines {
-		count += v
-		info = append(info, fmt.Sprintf("count:%d\n call stack for:%s\n", v, k))
+	if stack == "" {
+		return nil
 	}
-	return count, info, nil
+	return fmt.Errorf("%s", stack)
 }
 
 func isWhitelisted(name string, whitelist []string) bool {
@@ -129,7 +114,7 @@ func traverseEventLinks(e *Event) (*Event, bool) {
 }
 
 func printStack(s []*Frame, fn string) string {
-	str := fn + "\n"
+	str := "call stack for:" + fn + "\n"
 	for _, fr := range s {
 		str += "function:" + fr.Fn + "\n" + "file:" + fr.File + "\nline:" + strconv.Itoa(fr.Line) + "\n"
 	}
