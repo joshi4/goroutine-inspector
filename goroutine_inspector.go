@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
 	"runtime/trace"
 	"strconv"
 	"strings"
@@ -43,22 +42,6 @@ func Start() (*Trace, error) {
 	return t, nil
 }
 
-func shouldAddEvent(e *Event, fn string) bool {
-	if fn == "" {
-		return false
-	}
-	pattern := "github.com/joshi4/goroutine-inspector.Start|runtime/trace.Start|runtime.gcBgMark|runtime.addtimerLocked"
-	ok, _ := regexp.MatchString(pattern, peekFn(e.Stk))
-	return !ok
-}
-
-func peekFn(s []*Frame) string {
-	if len(s) == 0 {
-		return ""
-	}
-	return s[0].Fn
-}
-
 // Stop stops the trace.
 func (t *Trace) Stop() {
 	t.done.Do(func() {
@@ -71,13 +54,8 @@ func (t *Trace) Stop() {
 // GoroutineLeaks calls Stop()
 func (t *Trace) GoroutineLeaks(whitelist []string) (int, []string, error) {
 	t.Stop()
-
-	buf := new(bytes.Buffer)
-	r := io.TeeReader(t.buf, buf)
-	defer func() { t.buf = buf }()
-
 	whitelist = append(t.whitelist, whitelist...)
-	return goroutineLeaks(r, whitelist)
+	return goroutineLeaks(t.buf, whitelist)
 }
 
 func GoroutineLeaksFromFile(filename string) (int, []string, error) {
