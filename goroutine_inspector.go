@@ -5,22 +5,23 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
 	"runtime/trace"
 	"strconv"
+	"strings"
 	"sync"
 
 	. "github.com/joshi4/goroutine-inspector/internal/trace"
 )
 
 type Trace struct {
-	buf  *bytes.Buffer
-	done sync.Once
+	buf       *bytes.Buffer
+	whitelist []string
+	done      sync.Once
+}
 
-	process          sync.Once
-	leakedGoRoutines int
-	stackTraces      []string
-	err              error
+var defaultWhitelist = []string{
+	"runtime/trace.Start.func1",
+	"testing.tRunner",
 }
 
 // Start starts a trace for inspection.
@@ -28,30 +29,15 @@ type Trace struct {
 // NOTE: Start must only be called once per executable
 func Start() (*Trace, error) {
 	t := &Trace{
-		buf: new(bytes.Buffer),
+		buf:       new(bytes.Buffer),
+		whitelist: defaultWhitelist,
 	}
 
+	t.buf.Reset()
 	if err := trace.Start(t.buf); err != nil {
 		return nil, err
 	}
 	return t, nil
-}
-
-func shouldAddEvent(e *Event, fn string) bool {
-	if fn == "" {
-		return false
-	}
-
-	pattern := "github.com/joshi4/goroutine-inspector.Start|runtime/trace.Start|runtime.gcBgMark|runtime.addtimerLocked"
-	ok, _ := regexp.MatchString(pattern, peekFn(e.Stk))
-	return !ok
-}
-
-func peekFn(s []*Frame) string {
-	if len(s) == 0 {
-		return ""
-	}
-	return s[0].Fn
 }
 
 // Stop stops the trace.
@@ -64,16 +50,10 @@ func (t *Trace) Stop() {
 // GoroutineLeaks returns all go routines that were created
 // but did not terminate during the trace period.
 // GoroutineLeaks calls Stop()
-func (t *Trace) GoroutineLeaks() (int, []string, error) {
+func (t *Trace) GoroutineLeaks(whitelist []string) (int, []string, error) {
 	t.Stop()
-
-	t.process.Do(func() {
-		count, info, err := goroutineLeaks(t.buf)
-		t.leakedGoRoutines = count
-		t.stackTraces = info
-		t.err = err
-	})
-	return t.leakedGoRoutines, t.stackTraces, t.err
+	whitelist = append(t.whitelist, whitelist...)
+	return goroutineLeaks(t.buf, whitelist)
 }
 
 func GoroutineLeaksFromFile(filename string) (int, []string, error) {
@@ -82,11 +62,11 @@ func GoroutineLeaksFromFile(filename string) (int, []string, error) {
 		return -1, nil, err
 	}
 	defer f.Close()
-	return goroutineLeaks(f)
+	return goroutineLeaks(f, defaultWhitelist)
 }
 
-func (t *Trace) AssertGoroutineLeakCount(want int) error {
-	count, leaks, err := t.GoroutineLeaks()
+func (t *Trace) AssertGoroutineLeakCount(want int, whitelist ...string) error {
+	count, leaks, err := t.GoroutineLeaks(whitelist)
 	if err != nil {
 		return err
 	}
@@ -97,7 +77,7 @@ func (t *Trace) AssertGoroutineLeakCount(want int) error {
 	return nil
 }
 
-func goroutineLeaks(r io.Reader) (int, []string, error) {
+func goroutineLeaks(r io.Reader, blacklist []string) (int, []string, error) {
 	events, err := Parse(r, "")
 	if err != nil {
 		return -1, nil, err
@@ -110,7 +90,7 @@ func goroutineLeaks(r io.Reader) (int, []string, error) {
 	for _, e := range events {
 		if fe, ok := hasGoroutineLeaked(e); ok {
 			fn := gdesc[fe.G]
-			if fn != nil && fn.Name != "" && shouldAddEvent(e, fn.Name) {
+			if fn != nil && fn.Name != "" && !isWhitelisted(fn.Name, blacklist) {
 				leakedGoRoutines[printStack(e.Stk, fn.Name)] += 1
 			}
 		}
@@ -123,6 +103,15 @@ func goroutineLeaks(r io.Reader) (int, []string, error) {
 		info = append(info, fmt.Sprintf("count:%d\n call stack for:%s\n", v, k))
 	}
 	return count, info, nil
+}
+
+func isWhitelisted(name string, whitelist []string) bool {
+	for _, wl := range whitelist {
+		if strings.HasSuffix(name, wl) || strings.HasPrefix(name, "runtime.") {
+			return true
+		}
+	}
+	return false
 }
 
 func hasGoroutineLeaked(e *Event) (*Event, bool) {
