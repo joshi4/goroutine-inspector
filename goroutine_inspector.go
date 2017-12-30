@@ -20,7 +20,13 @@ type Trace struct {
 	done      sync.Once
 }
 
-var defaultWhitelist = []string{"testing.tRunner", "runtime/trace.Start.func1", "runtime.gcBgMarkWorker"}
+var defaultWhitelist = []string{
+	"runtime.main",
+	"runtime/trace.Start.func1",
+	"runtime.gcBgMarkWorker",
+	"runtime.timerproc",
+	"testing.tRunner",
+}
 
 // Start starts a trace for inspection.
 //
