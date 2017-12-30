@@ -37,7 +37,11 @@ func Start() (*Trace, error) {
 	return t, nil
 }
 
-func shouldAddEvent(e *Event) bool {
+func shouldAddEvent(e *Event, fn string) bool {
+	if fn == "" {
+		return false
+	}
+
 	pattern := "github.com/joshi4/goroutine-inspector.Start|runtime/trace.Start|runtime.gcBgMark|runtime.addtimerLocked"
 	ok, _ := regexp.MatchString(pattern, peekFn(e.Stk))
 	return !ok
@@ -99,11 +103,15 @@ func goroutineLeaks(r io.Reader) (int, []string, error) {
 		return -1, nil, err
 	}
 
+	gdesc := GoroutineStats(events)
+	_ = gdesc
+
 	leakedGoRoutines := make(map[string]int)
 	for _, e := range events {
-		if e.Type == EvGoCreate && goroutineLeaked(e) {
-			if shouldAddEvent(e) {
-				leakedGoRoutines[printStack(e.Stk)] += 1
+		if fe, ok := hasGoroutineLeaked(e); ok {
+			fn := gdesc[fe.G]
+			if fn != nil && fn.Name != "" && shouldAddEvent(e, fn.Name) {
+				leakedGoRoutines[printStack(e.Stk, fn.Name)] += 1
 			}
 		}
 	}
@@ -112,20 +120,27 @@ func goroutineLeaks(r io.Reader) (int, []string, error) {
 	count := 0
 	for k, v := range leakedGoRoutines {
 		count += v
-		info = append(info, fmt.Sprintf("count:%d\n stack:%s\n", v, k))
+		info = append(info, fmt.Sprintf("count:%d\n call stack for:%s\n", v, k))
 	}
 	return count, info, nil
 }
 
-func goroutineLeaked(e *Event) bool {
-	if e.Link == nil {
-		return (e.Type != EvGoEnd)
+func hasGoroutineLeaked(e *Event) (*Event, bool) {
+	if e.Type != EvGoCreate {
+		return nil, false
 	}
-	return goroutineLeaked(e.Link)
+	return traverseEventLinks(e)
 }
 
-func printStack(s []*Frame) string {
-	str := ""
+func traverseEventLinks(e *Event) (*Event, bool) {
+	if e.Link == nil {
+		return e, (e.Type != EvGoEnd)
+	}
+	return traverseEventLinks(e.Link)
+}
+
+func printStack(s []*Frame, fn string) string {
+	str := fn + "\n"
 	for _, fr := range s {
 		str += "function:" + fr.Fn + "\n" + "file:" + fr.File + "\nline:" + strconv.Itoa(fr.Line) + "\n"
 	}
