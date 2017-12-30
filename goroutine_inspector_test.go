@@ -2,6 +2,7 @@ package goroutine_inspector
 
 import (
 	"testing"
+	"time"
 )
 
 func start(t *testing.T) *Trace {
@@ -30,6 +31,14 @@ func TestGoroutineLeaks(t *testing.T) {
 
 func routine(ch chan bool) {
 	ch <- false
+}
+
+func TestSleep(t *testing.T) {
+	tr := start(t)
+	time.Sleep(250 * time.Millisecond)
+	if err := tr.AssertGoroutineLeakCount(0); err != nil {
+		t.Error(err)
+	}
 }
 
 // TODO: rewrite this test
