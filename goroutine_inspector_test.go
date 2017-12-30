@@ -30,11 +30,6 @@ func TestGoroutineLeaks(t *testing.T) {
 	if err := tr.AssertGoroutineLeakCount(0, "routine"); err != nil {
 		t.Error(err)
 	}
-
-	// execute second query on same trace
-	if err := tr.AssertGoroutineLeakCount(0); err == nil {
-		t.Error("unexpected nil error:, function routine leaks and should be detected")
-	}
 }
 
 func routine(ch chan bool) {
