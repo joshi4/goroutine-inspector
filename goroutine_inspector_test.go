@@ -1,6 +1,11 @@
 package goroutine_inspector
 
 import (
+	"io"
+	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -41,34 +46,35 @@ func TestSleep(t *testing.T) {
 	}
 }
 
-// TODO: rewrite this test
-//func TestResponseBodyLeak(t *testing.T) {
-//
-//	h := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-//		io.WriteString(w, "okay")
-//	})
-//	s := httptest.NewServer(h)
-//
-//	tr := start(t)
-//	defer func() {
-//		if err := tr.AssertGoroutineLeakCount(1, "readLoop", "writeLoop", "net/http/httptest.(*Server).goServe.func1"); err != nil {
-//			t.Error(err)
-//		}
-//	}()
-//
-//	cl := s.Client()
-//	res, err := cl.Get(s.URL)
-//	if err != nil {
-//		t.Error(err)
-//	}
-//
-//	// res.Body is not closed on purpose
-//	b, err := ioutil.ReadAll(res.Body)
-//	if err != nil {
-//		t.Error(err)
-//	}
-//
-//	if got, want := string(b), "okay"; got != want {
-//		t.Errorf("unexpected response from test server: got=%s, want %s", got, want)
-//	}
-//}
+func TestResponseBodyLeak(t *testing.T) {
+
+	h := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		io.WriteString(w, "okay")
+	})
+	s := httptest.NewServer(h)
+
+	tr := start(t)
+	defer func() {
+		substr := "net/http.(*conn).serve"
+		// error should contain leaked go routine stemming from not closing the response body
+		if err := tr.GoroutineLeaks(); !strings.Contains(err.Error(), substr) {
+			t.Errorf("err = %s does not contain %s", err.Error(), substr)
+		}
+	}()
+
+	cl := s.Client()
+	res, err := cl.Get(s.URL)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// res.Body is not closed on purpose
+	b, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if got, want := string(b), "okay"; got != want {
+		t.Errorf("unexpected response from test server: got=%s, want %s", got, want)
+	}
+}
